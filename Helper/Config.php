@@ -43,6 +43,7 @@ class Config extends AbstractHelper
     const AKENEO_API_PAGINATION_SIZE = 'pimgento/akeneo_api/pagination_size';
     const AKENEO_API_ADMIN_CHANNEL = 'pimgento/akeneo_api/admin_channel';
     const AKENEO_API_WEBSITE_MAPPING = 'pimgento/akeneo_api/website_mapping';
+    const FALLBACKS_USE_LABEL_FALLBACKS = 'pimgento/fallbacks/use_label_fallbacks';
     const PRODUCTS_FILTERS_MODE = 'pimgento/products_filters/mode';
     const PRODUCTS_FILTERS_COMPLETENESS_TYPE = 'pimgento/products_filters/completeness_type';
     const PRODUCTS_FILTERS_COMPLETENESS_VALUE = 'pimgento/products_filters/completeness_value';
@@ -211,6 +212,16 @@ class Config extends AbstractHelper
     public function isAkeneoEnterprise()
     {
         return $this->scopeConfig->isSetFlag(self::AKENEO_API_IS_ENTERPRISE);
+    }
+
+    /**
+     * Check wether Fallback for labels is enabled or not
+     *
+     * @return bool
+     */
+    public function useLabelFallbacks()
+    {
+        return $this->scopeConfig->isSetFlag(self::FALLBACKS_USE_LABEL_FALLBACKS);
     }
 
     /**

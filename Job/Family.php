@@ -15,6 +15,8 @@ use Magento\Framework\Event\ManagerInterface;
 use Pimgento\Api\Helper\Authenticator;
 use Pimgento\Api\Helper\Import\Entities;
 use Pimgento\Api\Helper\Config as ConfigHelper;
+use Pimgento\Api\Model\Fallback;
+use Pimgento\Api\Model\FallbackFactory;
 use Zend_Db_Expr as Expr;
 use Pimgento\Api\Helper\Output as OutputHelper;
 use Pimgento\Api\Helper\Store as StoreHelper;
@@ -79,6 +81,14 @@ class Family extends Import
      * @var StoreHelper $storeHelper
      */
     protected $storeHelper;
+    /**
+     * @var FallbackFactory
+     */
+    protected $fallbackFactory;
+    /**
+     * @var Fallback
+     */
+    protected $fallback;
 
     /**
      * Family constructor
@@ -103,6 +113,7 @@ class Family extends Import
         SetFactory $attributeSetFactory,
         TypeListInterface $cacheTypeList,
         Config $eavConfig,
+        FallbackFactory $fallbackFactory,
         array $data = []
     ) {
         parent::__construct($outputHelper, $eventManager, $authenticator, $data);
@@ -113,6 +124,7 @@ class Family extends Import
         $this->cacheTypeList       = $cacheTypeList;
         $this->eavConfig           = $eavConfig;
         $this->storeHelper         = $storeHelper;
+        $this->fallbackFactory     = $fallbackFactory;
     }
 
     /**
@@ -185,12 +197,24 @@ class Family extends Import
      */
     public function insertFamilies()
     {
+        $this->fallback = $this->fallbackFactory->create();
+        $adminLocale = $this->storeHelper->getAdminLang();
+        $this->fallback->registerColumn('code');
+        $this->fallback->registerColumn('labels-' . $adminLocale, 'code');
+        $labelColumn = 'labels-'.$this->configHelper->getDefaultLocale();
+
+        if($labelColumn !== 'labels-' . $adminLocale) {
+            $this->fallback->registerColumn($labelColumn, 'labels-' . $adminLocale);
+        }
+
         /** @var AdapterInterface $connection */
         $connection = $this->entitiesHelper->getConnection();
         /** @var string $tmpTable */
         $tmpTable = $this->entitiesHelper->getTableName($this->getCode());
         /** @var string $label */
-        $label = 'labels-'.$this->configHelper->getDefaultLocale();
+        $label = $this->configHelper->useLabelFallbacks() ?
+            $this->fallback->fallbackColumn($connection, $tmpTable, $labelColumn)
+            : $labelColumn;
         /** @var string $productEntityTypeId */
         $productEntityTypeId = $this->eavConfig->getEntityType(ProductAttributeInterface::ENTITY_TYPE_CODE)
             ->getEntityTypeId();

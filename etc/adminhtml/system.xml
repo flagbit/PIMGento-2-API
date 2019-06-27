@@ -70,6 +70,14 @@
                     <validate>required-entry</validate>
                 </field>
             </group>
+            <group id="fallbacks" translate="label" sortOrder="15" showInDefault="1" showInWebsite="0" showInStore="0">
+                <label>Fallback Configuration</label>
+                <field id="use_label_fallbacks" translate="label" type="select" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Use Label fallbacks</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Use fallbacks for labels from store locale to admin locale and from admin locale to akeneo code</comment>
+                </field>
+            </group>
             <group id="products_filters" translate="label" type="text" sortOrder="20" showInDefault="1" showInWebsite="0" showInStore="0">
                 <label>Filter products</label>
                 <field id="mode" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
