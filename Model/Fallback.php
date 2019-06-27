@@ -29,8 +29,6 @@ class Fallback extends AbstractModel
         ]
     ];
 
-    protected $fallbackOnEmpty = false;
-
     /**
      * Fallback constructor
      *
@@ -98,7 +96,7 @@ class Fallback extends AbstractModel
             throw new InvalidArgumentException('No column with name ' . $from . ' registered');
         }
 
-        if(!isset($this->fallbackRoute[$to])) {
+        if (!isset($this->fallbackRoute[$to])) {
             throw new InvalidArgumentException('No column with name ' . $to . ' registered');
         }
 
@@ -126,7 +124,7 @@ class Fallback extends AbstractModel
                 || !($exists = $connection->tableColumnExists($table, $column))
             )
         ) {
-            if(isset($exists) && !$exists) {
+            if (isset($exists) && !$exists) {
                 $this->fallbackRoute[$column]['perm'] = true;
             }
 
@@ -157,10 +155,10 @@ class Fallback extends AbstractModel
             (
                 $this->fallbackRoute[$column]['perm'] && is_string($this->fallbackRoute[$column]['fallback'])
                 || !($exists = isset($row[$column]))
-                || $this->fallbackOnEmpty && empty($row[$column])
+                || empty($row[$column])
             )
         ) {
-            if(isset($exists) && !$exists) {
+            if (isset($exists) && !$exists) {
                 $this->fallbackRoute[$column]['perm'] = true;
             }
 
@@ -196,14 +194,14 @@ class Fallback extends AbstractModel
                 continue;
             }
 
-            if(!$connection->tableColumnExists($table, $column)) {
+            if (!$connection->tableColumnExists($table, $column)) {
                 $this->fallbackRoute[$column]['perm'] = true;
                 continue;
             }
 
             $route[] = $column;
 
-            if(is_string($this->fallbackRoute[$column]['fallback'])) {
+            if (is_string($this->fallbackRoute[$column]['fallback'])) {
                 $column = $this->fallbackRoute[$column]['fallback'];
                 continue;
             }
@@ -216,7 +214,7 @@ class Fallback extends AbstractModel
             }
         }
 
-        if(count($route) === 0) {
+        if (count($route) === 0) {
             $route[] = $column;
         }
 
@@ -224,32 +222,27 @@ class Fallback extends AbstractModel
     }
 
     /**
+     * Get SQL Case when query for fallback route
+     *
      * @param $fallbackRoute
      * @return string
      */
     public function getSqlCase($fallbackRoute)
     {
-        $routeCount = count($fallbackRoute);
-        $sqlCase = $fallbackRoute[0];
-        if($routeCount > 1) {
-            $sqlCase = ' (CASE ';
-            for($i = 0; $i < $routeCount-1; $i++) {
-                $sqlCase .= ' WHEN `' . $fallbackRoute[$i] . '` IS NOT NULL AND `' . $fallbackRoute[$i] . '` != \'\' THEN `' . $fallbackRoute[$i] . '` ';
+        if (is_array($fallbackRoute) && ($routeCount = count($fallbackRoute)) > 0) {
+            $sqlCase = $fallbackRoute[0];
+            if ($routeCount > 1) {
+                $sqlCase = ' (CASE ';
+                for ($i = 0; $i < $routeCount - 1; $i++) {
+                    $sqlCase .= ' WHEN TRIM(`' . $fallbackRoute[$i] . '`) > \'\' THEN `' . $fallbackRoute[$i] . '` ';
+                }
+
+                $sqlCase .= ' ELSE `' . $fallbackRoute[$routeCount - 1] . '` END) ';
             }
 
-            $sqlCase .= ' ELSE `' . $fallbackRoute[$routeCount-1] . '` END) ';
+            return $sqlCase;
         }
 
-        return $sqlCase;
-    }
-
-    /**
-     * Set if fallback should also be used on empty or NULL columns
-     * and not only if the column is missing completely
-     *
-     * @param bool $fallbackOnEmpty
-     */
-    public function setFallbackOnEmpty($fallbackOnEmpty) {
-        $this->fallbackOnEmpty = $fallbackOnEmpty;
+        return [];
     }
 }

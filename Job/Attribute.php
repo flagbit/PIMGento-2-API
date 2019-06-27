@@ -18,6 +18,8 @@ use Pimgento\Api\Helper\Import\Attribute as AttributeHelper;
 use Pimgento\Api\Helper\Import\Entities as EntitiesHelper;
 use Pimgento\Api\Helper\Output as OutputHelper;
 use Pimgento\Api\Helper\Store as StoreHelper;
+use Pimgento\Api\Model\Fallback;
+use Pimgento\Api\Model\FallbackFactory;
 use \Zend_Db_Expr as Expr;
 
 /**
@@ -86,6 +88,16 @@ class Attribute extends Import
      * @var EavSetup $eavSetup
      */
     protected $eavSetup;
+    /**
+     * Factory for the fallback model
+     *
+     * @var FallbackFactory
+     */
+    protected $fallbackFactory;
+    /**
+     * @var Fallback
+     */
+    protected $fallback;
 
     /**
      * Attribute constructor
@@ -113,6 +125,7 @@ class Attribute extends Import
         TypeListInterface $cacheTypeList,
         StoreHelper $storeHelper,
         EavSetup $eavSetup,
+        FallbackFactory $fallbackFactory,
         array $data = []
     ) {
         parent::__construct($outputHelper, $eventManager, $authenticator, $data);
@@ -124,6 +137,7 @@ class Attribute extends Import
         $this->cacheTypeList   = $cacheTypeList;
         $this->storeHelper     = $storeHelper;
         $this->eavSetup        = $eavSetup;
+        $this->fallbackFactory = $fallbackFactory;
     }
 
     /**
@@ -296,6 +310,9 @@ class Attribute extends Import
      */
     public function addAttributes()
     {
+        $this->fallback = $this->fallbackFactory->create();
+        $this->fallback->registerColumn('code');
+
         /** @var array $columns */
         $columns = $this->attributeHelper->getSpecificColumns();
         /** @var AdapterInterface $connection */
@@ -307,6 +324,7 @@ class Attribute extends Import
         $adminLang = $this->storeHelper->getAdminLang();
         /** @var string $adminLabelColumn */
         $adminLabelColumn = sprintf('labels-%s', $adminLang);
+        $this->fallback->registerColumn($adminLabelColumn, 'code');
 
         /** @var Select $import */
         $import = $connection->select()->from($tmpTable);
@@ -338,9 +356,12 @@ class Attribute extends Import
 
             /* Retrieve default admin label */
             /** @var string $frontendLabel */
-            $frontendLabel = __('Unknown');
-            if (!empty($row[$adminLabelColumn])) {
-                $frontendLabel = $row[$adminLabelColumn];
+            $frontendLabel = __('Unkown');
+
+            if ($this->configHelper->useLabelFallbacks()) {
+                $frontendLabel = $this->fallback->fallbackValue($row, $adminLabelColumn);
+            } elseif (!empty($row[$adminLabelCoumn])) {
+                $frontendLabel = $row[$adminLabelCoumn];
             }
 
             /* Retrieve attribute scope */
