@@ -14,9 +14,9 @@ class Fallback extends AbstractModel
     /**
      * [index: string]: Column name of the registered column. Must be indentical to the name in the database table
      *
-     * [n][fallback]: Column name of the column to fall back to
+     * [n][fallback: string]: Column name of the column to fall back to
      *
-     * [n][perm]: Wether fallback is permanent or temporary.
+     * [n][perm: bool]: Wether fallback is permanent or temporary.
      * Permanent fallbacks are used everytime in the current object
      * while temporary fallbacks are calculated again
      *
@@ -29,13 +29,7 @@ class Fallback extends AbstractModel
         ]
     ];
 
-    /**
-     * Use fallback when value is NULL.
-     * If set to false, fallback will only be used when the column is missing completely
-     *
-     * @var bool
-     */
-    protected $useFallbackOnNull = true;
+    protected $fallbackOnEmpty = false;
 
     /**
      * Fallback constructor
@@ -66,13 +60,13 @@ class Fallback extends AbstractModel
      * $name: Column Name; must be identical to the column name in the table
      *
      * $fallback: To which column name should be falled back.
-     * null for no fallback. Should only be used for values which are always present
+     * NULL for no fallback. Value NULL should only be used for values which are always present
      *
      * $perm: Define if fallback should be permanent for current object
      * means fallback system will always use this fallback. Even if there are values in the current column
      *
-     * @param $name
-     * @param null $fallback
+     * @param string $name
+     * @param string|null $fallback
      * @param bool $perma
      */
     public function registerColumn($name, $fallback = null, $perma = false)
@@ -95,26 +89,30 @@ class Fallback extends AbstractModel
     /**
      * register a fallback from a registered column to another
      *
-     * @param $from
-     * @param $to
+     * @param string $from
+     * @param string $to
      */
     public function registerFallback($from, $to)
     {
-        if (isset($this->fallbackRoute[$from])) {
-            $this->fallbackRoute[$from]['fallback'] = $to;
-        } else {
+        if (!isset($this->fallbackRoute[$from])) {
             throw new InvalidArgumentException('No column with name ' . $from . ' registered');
         }
+
+        if(!isset($this->fallbackRoute[$to])) {
+            throw new InvalidArgumentException('No column with name ' . $to . ' registered');
+        }
+
+        $this->fallbackRoute[$from]['fallback'] = $to;
     }
 
     /**
      * fallback the column name
      * calling this may increases the speed of further fallbackValue calls
      *
-     * @param $connection
-     * @param $column
-     * @param $table
-     * @return mixed
+     * @param AdapterInterface $connection
+     * @param string $column
+     * @param string $table
+     * @return string
      * @throws \Exception
      */
     public function fallbackColumn($connection, $table, $column)
@@ -145,8 +143,8 @@ class Fallback extends AbstractModel
     /**
      * fallback the value of a column
      *
-     * @param $row
-     * @param $column
+     * @param array $row
+     * @param string $column
      * @return mixed
      * @throws \Exception
      */
@@ -159,6 +157,7 @@ class Fallback extends AbstractModel
             (
                 $this->fallbackRoute[$column]['perm'] && is_string($this->fallbackRoute[$column]['fallback'])
                 || !($exists = isset($row[$column]))
+                || $this->fallbackOnEmpty && empty($row[$column])
             )
         ) {
             if(isset($exists) && !$exists) {
@@ -177,5 +176,80 @@ class Fallback extends AbstractModel
         }
 
         return $row[$column];
+    }
+
+    /**
+     * Get array of fallbacks
+     * used for fallbacks in sql statements
+     *
+     * @param $column
+     * @return array
+     */
+    public function getFallbackColumnRoute($connection, $table, $column)
+    {
+        $try = 0;
+        $route = [];
+
+        while (isset($this->fallbackRoute[$column])) {
+            if ($this->fallbackRoute[$column]['perm'] && is_string($this->fallbackRoute[$column]['fallback'])) {
+                $column = $this->fallbackRoute[$column]['fallback'];
+                continue;
+            }
+
+            if(!$connection->tableColumnExists($table, $column)) {
+                $this->fallbackRoute[$column]['perm'] = true;
+                continue;
+            }
+
+            $route[] = $column;
+
+            if(is_string($this->fallbackRoute[$column]['fallback'])) {
+                $column = $this->fallbackRoute[$column]['fallback'];
+                continue;
+            }
+
+            break;
+
+            $try++;
+            if ($try > 100) {
+                throw new \Exception('Fallbacks exceeded 100 Failure!');
+            }
+        }
+
+        if(count($route) === 0) {
+            $route[] = $column;
+        }
+
+        return $route;
+    }
+
+    /**
+     * @param $fallbackRoute
+     * @return string
+     */
+    public function getSqlCase($fallbackRoute)
+    {
+        $routeCount = count($fallbackRoute);
+        $sqlCase = $fallbackRoute[0];
+        if($routeCount > 1) {
+            $sqlCase = ' (CASE ';
+            for($i = 0; $i < $routeCount-1; $i++) {
+                $sqlCase .= ' WHEN `' . $fallbackRoute[$i] . '` IS NOT NULL AND `' . $fallbackRoute[$i] . '` != \'\' THEN `' . $fallbackRoute[$i] . '` ';
+            }
+
+            $sqlCase .= ' ELSE `' . $fallbackRoute[$routeCount-1] . '` END) ';
+        }
+
+        return $sqlCase;
+    }
+
+    /**
+     * Set if fallback should also be used on empty or NULL columns
+     * and not only if the column is missing completely
+     *
+     * @param bool $fallbackOnEmpty
+     */
+    public function setFallbackOnEmpty($fallbackOnEmpty) {
+        $this->fallbackOnEmpty = $fallbackOnEmpty;
     }
 }

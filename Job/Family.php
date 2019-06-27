@@ -212,9 +212,12 @@ class Family extends Import
         /** @var string $tmpTable */
         $tmpTable = $this->entitiesHelper->getTableName($this->getCode());
         /** @var string $label */
-        $label = $this->configHelper->useLabelFallbacks() ?
-            $this->fallback->fallbackColumn($connection, $tmpTable, $labelColumn)
-            : $labelColumn;
+        $fallbackRoute = $this->configHelper->useLabelFallbacks() ?
+            $this->fallback->getFallbackColumnRoute($connection, $tmpTable, $labelColumn)
+            : [$labelColumn];
+
+        $sqlCase = $this->fallback->getSqlCase($fallbackRoute);
+
         /** @var string $productEntityTypeId */
         $productEntityTypeId = $this->eavConfig->getEntityType(ProductAttributeInterface::ENTITY_TYPE_CODE)
             ->getEntityTypeId();
@@ -222,7 +225,7 @@ class Family extends Import
         $values = [
             'attribute_set_id'   => '_entity_id',
             'entity_type_id'     => new Expr($productEntityTypeId),
-            'attribute_set_name' => new Expr('CONCAT("Pim", " ", `' . $label . '`)'),
+            'attribute_set_name' => new Expr('CONCAT("Pim", " ", ' . $sqlCase . ')'),
             'sort_order'         => new Expr(1),
         ];
         /** @var Select $families */
