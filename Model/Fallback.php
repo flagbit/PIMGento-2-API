@@ -180,8 +180,11 @@ class Fallback extends AbstractModel
      * Get array of fallbacks
      * used for fallbacks in sql statements
      *
+     * @param AdapterInterface $connection
+     * @param $table
      * @param $column
      * @return array
+     * @throws \Exception
      */
     public function getFallbackColumnRoute($connection, $table, $column)
     {
@@ -224,13 +227,13 @@ class Fallback extends AbstractModel
     /**
      * Get SQL Case when query for fallback route
      *
-     * @param $fallbackRoute
+     * @param mixed $fallbackRoute
      * @return string
      */
     public function getSqlCase($fallbackRoute)
     {
         if (is_array($fallbackRoute) && ($routeCount = count($fallbackRoute)) > 0) {
-            $sqlCase = $fallbackRoute[0];
+            $sqlCase = sprintf('`%s`', $fallbackRoute[0]);
             if ($routeCount > 1) {
                 $sqlCase = ' (CASE ';
                 for ($i = 0; $i < $routeCount - 1; $i++) {
@@ -243,6 +246,6 @@ class Fallback extends AbstractModel
             return $sqlCase;
         }
 
-        return [];
+        return sprintf('`%s`', $fallbackRoute);
     }
 }
