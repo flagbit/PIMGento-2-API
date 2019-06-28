@@ -20,6 +20,8 @@ use Pimgento\Api\Helper\Import\Attribute as AttributeHelper;
 use Pimgento\Api\Helper\Import\Entities as EntitiesHelper;
 use Pimgento\Api\Helper\Output as OutputHelper;
 use Pimgento\Api\Helper\Store as StoreHelper;
+use Pimgento\Api\Model\Fallback;
+use Pimgento\Api\Model\FallbackFactory;
 use \Zend_Db_Expr as Expr;
 
 /**
@@ -94,6 +96,14 @@ class Option extends Import
      * @var TypeListInterface $cacheTypeList
      */
     protected $cacheTypeList;
+    /**
+     * @var FallbackFactory
+     */
+    protected $fallbackFactory;
+    /**
+     * @var Fallback
+     */
+    protected $fallback;
 
     /**
      * Option constructor
@@ -123,6 +133,7 @@ class Option extends Import
         TypeListInterface $cacheTypeList,
         StoreHelper $storeHelper,
         EavSetup $eavSetup,
+        FallbackFactory $fallbackFactory,
         array $data = []
     ) {
         parent::__construct($outputHelper, $eventManager, $authenticator, $data);
@@ -134,6 +145,7 @@ class Option extends Import
         $this->cacheTypeList   = $cacheTypeList;
         $this->storeHelper     = $storeHelper;
         $this->eavSetup        = $eavSetup;
+        $this->fallbackFactory = $fallbackFactory;
     }
 
     /**
@@ -263,12 +275,30 @@ class Option extends Import
         $tmpTable = $this->entitiesHelper->getTableName($this->getCode());
         /** @var array $stores */
         $stores = $this->storeHelper->getStores('lang');
+        $adminLang = $this->storeHelper->getAdminLang();
+
+        $this->fallback = $this->fallbackFactory->create();
+        $this->fallback->registerColumn('code');
+        $this->fallback->registerColumn('labels-' . $adminLang, 'code');
+
         /**
          * @var string $local
          * @var array  $data
          */
         foreach ($stores as $local => $data) {
-            if (!$connection->tableColumnExists($tmpTable, 'labels-'.$local)) {
+            $labelColumn = 'labels-' . $local;
+            $sqlCase = sprintf('`%s`', $labelColumn);
+            if ($this->configHelper->useLabelFallbacks()) {
+                $fallbackRoute = $this->fallback->getFallbackColumnRoute($connection, $tmpTable, $labelColumn);
+                $labelColumn = $fallbackRoute[0];
+                $sqlCase = $this->fallback->getSqlCase($fallbackRoute, 'a');
+                if (count($fallbackRoute) === 1) {
+                    $sqlCasePartials = explode('.', $fallbackRoute[0]);
+                    $sqlCase = end($sqlCasePartials);
+                }
+            }
+
+            if (!$connection->tableColumnExists($tmpTable, $labelColumn)) {
                 continue;
             }
             /** @var array $store */
@@ -279,7 +309,7 @@ class Option extends Import
                         [
                             'option_id' => '_entity_id',
                             'store_id'  => new Expr($store['store_id']),
-                            'value'     => 'labels-'.$local,
+                            'value'     => trim($sqlCase, '`'),
                         ]
                     )->joinInner(
                         ['b' => $this->entitiesHelper->getTable('pimgento_entities')],

@@ -230,22 +230,24 @@ class Fallback extends AbstractModel
      * @param mixed $fallbackRoute
      * @return string
      */
-    public function getSqlCase($fallbackRoute)
+    public function getSqlCase($fallbackRoute, $tableName = null)
     {
+        $prefix = $tableName ? sprintf('`%s`.', $tableName) : '';
+
         if (is_array($fallbackRoute) && ($routeCount = count($fallbackRoute)) > 0) {
-            $sqlCase = sprintf('`%s`', $fallbackRoute[0]);
+            $sqlCase = sprintf($prefix . '`%s`', $fallbackRoute[0]);
             if ($routeCount > 1) {
                 $sqlCase = ' (CASE ';
                 for ($i = 0; $i < $routeCount - 1; $i++) {
-                    $sqlCase .= ' WHEN TRIM(`' . $fallbackRoute[$i] . '`) > \'\' THEN `' . $fallbackRoute[$i] . '` ';
+                    $sqlCase .= ' WHEN TRIM(' . $prefix . '`' . $fallbackRoute[$i] . '`) > \'\' THEN ' . $prefix . '`' . $fallbackRoute[$i] . '` ';
                 }
 
-                $sqlCase .= ' ELSE `' . $fallbackRoute[$routeCount - 1] . '` END) ';
+                $sqlCase .= ' ELSE ' . $prefix . '`' . $fallbackRoute[$routeCount - 1] . '` END) ';
             }
 
             return $sqlCase;
         }
 
-        return sprintf('`%s`', $fallbackRoute);
+        return sprintf($prefix . '`%s`', $fallbackRoute);
     }
 }
