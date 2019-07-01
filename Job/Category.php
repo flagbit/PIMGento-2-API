@@ -210,11 +210,8 @@ class Category extends Import
         $tmpTable = $this->entitiesHelper->getTableName($this->getCode());
         /** @var array $stores */
         $stores = $this->storeHelper->getStores('lang');
-        $adminLang = $this->storeHelper->getAdminLang();
 
-        $this->fallback = $this->fallbackFactory->create();
-        $this->fallback->registerColumn('code');
-        $this->fallback->registerColumn('labels-' . $adminLang, 'code');
+        $this->createFallbackModel();
         /**
          * @var string $local
          * @var array $affected
@@ -223,12 +220,7 @@ class Category extends Import
             /** @var array $keys */
             $keys = [];
             $labelColumn = 'labels-' . $local;
-            $sqlCase = sprintf('`%s`', $labelColumn);
-            if ($this->configHelper->useLabelFallbacks()) {
-                $fallbackRoute = $this->fallback->getFallbackColumnRoute($connection, $tmpTable, $labelColumn);
-                $labelColumn = $fallbackRoute[0];
-                $sqlCase = $this->fallback->getSqlCase($fallbackRoute);
-            }
+            $sqlCase = $this->getFallbackSQLCase($connection, $tmpTable, $labelColumn);
 
             if ($connection->tableColumnExists($tmpTable, $labelColumn)) {
                 $connection->addColumn($tmpTable, 'url_key-' . $local, [
@@ -496,11 +488,7 @@ class Category extends Import
 
         /** @var array $stores */
         $stores = $this->storeHelper->getStores('lang');
-        $adminLang = $this->storeHelper->getAdminLang();
-
-        $this->fallback = $this->fallbackFactory->create();
-        $this->fallback->registerColumn('code');
-        $this->fallback->registerColumn('labels-' . $adminLang, 'code');
+        $this->createFallbackModel();
 
         /**
          * @var string $local
@@ -508,13 +496,7 @@ class Category extends Import
          */
         foreach ($stores as $local => $affected) {
             $labelColumn = 'labels-' . $local;
-
-            $sqlCase = sprintf('`%s`', $labelColumn);
-            if ($this->configHelper->useLabelFallbacks()) {
-                $fallbackRoute = $this->fallback->getFallbackColumnRoute($connection, $tmpTable, $labelColumn);
-                $labelColumn = $fallbackRoute[0];
-                $sqlCase = $this->fallback->getSqlCase($fallbackRoute);
-            }
+            $sqlCase = $this->getFallbackSQLCase($connection, $tmpTable, $labelColumn);
 
             if (!$connection->tableColumnExists($tmpTable, $labelColumn)) {
                 continue;
@@ -758,5 +740,39 @@ class Category extends Import
         $this->setMessage(
             __('Cache cleaned for: %1', join(', ', $types))
         );
+    }
+
+    /**
+     * Create Fallback Model and register default columns
+     *
+     * @return void
+     */
+    public function createFallbackModel()
+    {
+        $adminLang = $this->storeHelper->getAdminLang();
+        $this->fallback = $this->fallbackFactory->create();
+        $this->fallback->registerColumn('code');
+        $this->fallback->registerColumn('labels-' . $adminLang, 'code');
+    }
+
+    /**
+     * Get sql case for fallback
+     * and reassign value for $labelColumn
+     *
+     * @param AdapterInterface $connection
+     * @param string $tmpTable
+     * @param string $labelColumn
+     * @return string
+     */
+    public function getFallbackSQLCase($connection, $tmpTable, &$labelColumn)
+    {
+        $sqlCase = sprintf('`%s`', $labelColumn);
+        if ($this->configHelper->useLabelFallbacks()) {
+            $fallbackRoute = $this->fallback->getFallbackColumnRoute($connection, $tmpTable, $labelColumn);
+            $labelColumn = $fallbackRoute[0];
+            $sqlCase = $this->fallback->getSqlCase($fallbackRoute);
+        }
+
+        return $sqlCase;
     }
 }

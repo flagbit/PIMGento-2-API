@@ -11,6 +11,15 @@ use Zend\Code\Exception\InvalidArgumentException;
  */
 class Fallback extends AbstractModel
 {
+    const MAXIMUM_FALLBACKS = 20;
+
+    const KEY_FALLBACK = 'fallback';
+    const KEY_PERMANENT = 'perm';
+
+    const EXCEPTION_FALLBACK_EXCEEDED = 'Fallbacks exceeded %s Failure!';
+    const EXCEPTION_NO_COLUMN_WITH_NAME = 'No column with name %s registered';
+    const EXCEPTION_NAMES_SHOULD_NOT_EQUAL = 'Fallback should not be equal to column name';
+
     /**
      * [index: string]: Column name of the registered column. Must be indentical to the name in the database table
      *
@@ -22,12 +31,7 @@ class Fallback extends AbstractModel
      *
      * @var array
      */
-    protected $fallbackRoute = [
-        'test' => [
-            'fallback' => null,
-            'perm' => true
-        ]
-    ];
+    protected $fallbackRoute = [];
 
     /**
      * Fallback constructor
@@ -70,16 +74,16 @@ class Fallback extends AbstractModel
     public function registerColumn($name, $fallback = null, $perma = false)
     {
         if ($name === $fallback) {
-            throw new InvalidArgumentException('Fallback should not be equal to column name');
+            $this->_exceptionNamesShouldNotBeEqual();
         }
 
         if (!empty($fallback) && !isset($this->fallbackRoute[$fallback])) {
-            throw new InvalidArgumentException('No column with name ' . $fallback . ' registered');
+            $this->_exceptionColumnWithNameAlreadyRegistered($fallback);
         }
 
         $column = [
-            'fallback' => $fallback,
-            'perm' => $perma
+            self::KEY_FALLBACK => $fallback,
+            self::KEY_PERMANENT => $perma
         ];
         $this->fallbackRoute[$name] = $column;
     }
@@ -93,14 +97,14 @@ class Fallback extends AbstractModel
     public function registerFallback($from, $to)
     {
         if (!isset($this->fallbackRoute[$from])) {
-            throw new InvalidArgumentException('No column with name ' . $from . ' registered');
+            $this->_exceptionColumnWithNameAlreadyRegistered($from);
         }
 
         if (!isset($this->fallbackRoute[$to])) {
-            throw new InvalidArgumentException('No column with name ' . $to . ' registered');
+            $this->_exceptionColumnWithNameAlreadyRegistered($to);
         }
 
-        $this->fallbackRoute[$from]['fallback'] = $to;
+        $this->fallbackRoute[$from][self::KEY_FALLBACK] = $to;
     }
 
     /**
@@ -120,18 +124,18 @@ class Fallback extends AbstractModel
         while (
             isset($this->fallbackRoute[$column]) &&
             (
-                $this->fallbackRoute[$column]['perm'] && is_string($this->fallbackRoute[$column]['fallback'])
+                $this->fallbackRoute[$column][self::KEY_PERMANENT] && is_string($this->fallbackRoute[$column][self::KEY_FALLBACK])
                 || !($exists = $connection->tableColumnExists($table, $column))
             )
         ) {
             if (isset($exists) && !$exists) {
-                $this->fallbackRoute[$column]['perm'] = true;
+                $this->fallbackRoute[$column][self::KEY_PERMANENT] = true;
             }
 
-            $column =  $this->fallbackRoute[$column]['fallback'];
+            $column =  $this->fallbackRoute[$column][self::KEY_FALLBACK];
             $try++;
-            if ($try > 100) {
-                throw new \Exception('Fallbacks exceeded 100 Failure!');
+            if ($try > self::MAXIMUM_FALLBACKS) {
+                $this->_exceptionFallbackExceeded();
             }
         }
 
@@ -153,19 +157,19 @@ class Fallback extends AbstractModel
         while (
             isset($this->fallbackRoute[$column]) &&
             (
-                $this->fallbackRoute[$column]['perm'] && is_string($this->fallbackRoute[$column]['fallback'])
+                $this->fallbackRoute[$column][self::KEY_PERMANENT] && is_string($this->fallbackRoute[$column][self::KEY_FALLBACK])
                 || !($exists = isset($row[$column]))
                 || empty($row[$column])
             )
         ) {
             if (isset($exists) && !$exists) {
-                $this->fallbackRoute[$column]['perm'] = true;
+                $this->fallbackRoute[$column][self::KEY_PERMANENT] = true;
             }
 
-            $column =  $this->fallbackRoute[$column]['fallback'];
+            $column =  $this->fallbackRoute[$column][self::KEY_FALLBACK];
             $try++;
-            if ($try > 100) {
-                throw new \Exception('Fallbacks exceeded 100 Failure!');
+            if ($try > self::MAXIMUM_FALLBACKS) {
+                $this->_exceptionFallbackExceeded();
             }
         }
 
@@ -192,29 +196,29 @@ class Fallback extends AbstractModel
         $route = [];
 
         while (isset($this->fallbackRoute[$column])) {
-            if ($this->fallbackRoute[$column]['perm'] && is_string($this->fallbackRoute[$column]['fallback'])) {
-                $column = $this->fallbackRoute[$column]['fallback'];
+            if ($this->fallbackRoute[$column][self::KEY_PERMANENT] && is_string($this->fallbackRoute[$column][self::KEY_FALLBACK])) {
+                $column = $this->fallbackRoute[$column][self::KEY_FALLBACK];
                 continue;
             }
 
             if (!$connection->tableColumnExists($table, $column)) {
-                $this->fallbackRoute[$column]['perm'] = true;
+                $this->fallbackRoute[$column][self::KEY_PERMANENT] = true;
                 continue;
             }
 
             $route[] = $column;
 
-            if (is_string($this->fallbackRoute[$column]['fallback'])) {
-                $column = $this->fallbackRoute[$column]['fallback'];
+            if (is_string($this->fallbackRoute[$column][self::KEY_FALLBACK])) {
+                $column = $this->fallbackRoute[$column][self::KEY_FALLBACK];
                 continue;
             }
 
-            break;
-
             $try++;
-            if ($try > 100) {
-                throw new \Exception('Fallbacks exceeded 100 Failure!');
+            if ($try > self::MAXIMUM_FALLBACKS) {
+                $this->_exceptionFallbackExceeded();
             }
+
+            break;
         }
 
         if (count($route) === 0) {
@@ -228,6 +232,7 @@ class Fallback extends AbstractModel
      * Get SQL Case when query for fallback route
      *
      * @param mixed $fallbackRoute
+     * @param string|null $tableName
      * @return string
      */
     public function getSqlCase($fallbackRoute, $tableName = null)
@@ -249,5 +254,30 @@ class Fallback extends AbstractModel
         }
 
         return sprintf($prefix . '`%s`', $fallbackRoute);
+    }
+
+    /**
+     * @throws \Exception
+     */
+    protected function _exceptionFallbackExceeded()
+    {
+        throw new \Exception(sprintf(self::EXCEPTION_FALLBACK_EXCEEDED, self::MAXIMUM_FALLBACKS));
+    }
+
+    /**
+     * @param $column
+     * @throws InvalidArgumentException
+     */
+    protected function _exceptionColumnWithNameAlreadyRegistered($column)
+    {
+        throw new InvalidArgumentException(sprintf(self::EXCEPTION_NO_COLUMN_WITH_NAME, $column));
+    }
+
+    /**
+     * @throws InvalidArgumentException
+     */
+    protected function _exceptionNamesShouldNotBeEqual()
+    {
+        throw new InvalidArgumentException(self::EXCEPTION_NAMES_SHOULD_NOT_EQUAL);
     }
 }

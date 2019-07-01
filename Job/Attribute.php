@@ -307,6 +307,7 @@ class Attribute extends Import
      * Add attributes if not exists
      *
      * @return void
+     * @throws \Exception
      */
     public function addAttributes()
     {
@@ -356,12 +357,12 @@ class Attribute extends Import
 
             /* Retrieve default admin label */
             /** @var string $frontendLabel */
-            $frontendLabel = __('Unkown');
+            $frontendLabel = __('Unknown');
 
             if ($this->configHelper->useLabelFallbacks()) {
                 $frontendLabel = $this->fallback->fallbackValue($row, $adminLabelColumn);
-            } elseif (!empty($row[$adminLabelCoumn])) {
-                $frontendLabel = $row[$adminLabelCoumn];
+            } elseif (!empty($row[$adminLabelColumn])) {
+                $frontendLabel = $row[$adminLabelColumn];
             }
 
             /* Retrieve attribute scope */
