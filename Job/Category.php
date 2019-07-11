@@ -16,6 +16,7 @@ use Magento\Catalog\Model\Category as CategoryModel;
 use Magento\Staging\Model\VersionManager;
 use Magento\CatalogUrlRewrite\Model\CategoryUrlPathGenerator;
 use Magento\CatalogUrlRewrite\Model\CategoryUrlRewriteGenerator;
+use Pimgento\Api\Model\FallbackFactory;
 use Zend_Db_Expr as Expr;
 
 /**
@@ -82,6 +83,14 @@ class Category extends Import
      * @var CategoryUrlPathGenerator $categoryUrlPathGenerator
      */
     protected $categoryUrlPathGenerator;
+    /**
+     * @var FallbackFactory
+     */
+    protected $fallbackFactory;
+    /**
+     * @var Fallback
+     */
+    protected $fallback;
 
     /**
      * Category constructor
@@ -107,6 +116,7 @@ class Category extends Import
         ConfigHelper $configHelper,
         CategoryModel $categoryModel,
         CategoryUrlPathGenerator $categoryUrlPathGenerator,
+        FallbackFactory $fallbackFactory,
         array $data = []
     ) {
         parent::__construct($outputHelper, $eventManager, $authenticator, $data);
@@ -117,6 +127,7 @@ class Category extends Import
         $this->configHelper   = $configHelper;
         $this->categoryModel  = $categoryModel;
         $this->categoryUrlPathGenerator = $categoryUrlPathGenerator;
+        $this->fallbackFactory = $fallbackFactory;
     }
 
     /**
@@ -200,6 +211,7 @@ class Category extends Import
         /** @var array $stores */
         $stores = $this->storeHelper->getStores('lang');
 
+        $this->createFallbackModel();
         /**
          * @var string $local
          * @var array $affected
@@ -207,7 +219,10 @@ class Category extends Import
         foreach ($stores as $local => $affected) {
             /** @var array $keys */
             $keys = [];
-            if ($connection->tableColumnExists($tmpTable, 'labels-' . $local)) {
+            $labelColumn = 'labels-' . $local;
+            $sqlCase = $this->getFallbackSQLCase($connection, $tmpTable, $labelColumn);
+
+            if ($connection->tableColumnExists($tmpTable, $labelColumn)) {
                 $connection->addColumn($tmpTable, 'url_key-' . $local, [
                     'type' => 'text',
                     'length' => 255,
@@ -216,9 +231,10 @@ class Category extends Import
                     'nullable' => false
                 ]);
 
+
                 /** @var \Magento\Framework\DB\Select $select */
                 $select = $connection->select()
-                    ->from($tmpTable, ['entity_id' => '_entity_id', 'name' => 'labels-' . $local]);
+                    ->from($tmpTable, ['entity_id' => '_entity_id', 'name' => trim($sqlCase, '`')]);
 
                 $updateUrl = true; // TODO retrieve update URL from config
 
@@ -472,20 +488,24 @@ class Category extends Import
 
         /** @var array $stores */
         $stores = $this->storeHelper->getStores('lang');
+        $this->createFallbackModel();
 
         /**
          * @var string $local
          * @var array $affected
          */
         foreach ($stores as $local => $affected) {
-            if (!$connection->tableColumnExists($tmpTable, 'labels-' . $local)) {
+            $labelColumn = 'labels-' . $local;
+            $sqlCase = $this->getFallbackSQLCase($connection, $tmpTable, $labelColumn);
+
+            if (!$connection->tableColumnExists($tmpTable, $labelColumn)) {
                 continue;
             }
 
             foreach ($affected as $store) {
                 /** @var array $values */
                 $values = [
-                    'name'    => 'labels-' . $local,
+                    'name'    => trim($sqlCase, '`'),
                     'url_key' => 'url_key-' . $local,
                 ];
                 $this->entitiesHelper->setValues(
@@ -720,5 +740,39 @@ class Category extends Import
         $this->setMessage(
             __('Cache cleaned for: %1', join(', ', $types))
         );
+    }
+
+    /**
+     * Create Fallback Model and register default columns
+     *
+     * @return void
+     */
+    public function createFallbackModel()
+    {
+        $adminLang = $this->storeHelper->getAdminLang();
+        $this->fallback = $this->fallbackFactory->create();
+        $this->fallback->registerColumn('code');
+        $this->fallback->registerColumn('labels-' . $adminLang, 'code');
+    }
+
+    /**
+     * Get sql case for fallback
+     * and reassign value for $labelColumn
+     *
+     * @param AdapterInterface $connection
+     * @param string $tmpTable
+     * @param string $labelColumn
+     * @return string
+     */
+    public function getFallbackSQLCase($connection, $tmpTable, &$labelColumn)
+    {
+        $sqlCase = sprintf('`%s`', $labelColumn);
+        if ($this->configHelper->useLabelFallbacks()) {
+            $fallbackRoute = $this->fallback->getFallbackColumnRoute($connection, $tmpTable, $labelColumn);
+            $labelColumn = $fallbackRoute[0];
+            $sqlCase = $this->fallback->getSqlCase($fallbackRoute);
+        }
+
+        return $sqlCase;
     }
 }
